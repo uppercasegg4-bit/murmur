@@ -1,44 +1,380 @@
 (()=>{'use strict';
-const $=id=>document.getElementById(id), dbName='murmur-local-v1';const state={name:'',id:'',peer:null,connections:new Map(),active:null,contacts:{},keys:{},theme:'system',accent:'#32836e',bubble:'rounded',ttl:0};
+const $=id=>document.getElementById(id), dbName='murmur-local-v2';
+const state={name:'',id:'',identity:null,peer:null,connections:new Map(),active:null,contacts:{},theme:'system',accent:'#32836e',bubble:'rounded',ttl:0};
 const accents=['#32836e','#527fe8','#8c69d4','#e38a55','#d65b76','#2998a8','#526477'];
-function toast(t){const el=$('toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2600)}
-function db(){return new Promise((resolve,reject)=>{let r=indexedDB.open(dbName,1);r.onupgradeneeded=()=>r.result.createObjectStore('msgs',{keyPath:'key'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);})}
-async function putMsg(m){let d=await db();return new Promise((res,rej)=>{let tx=d.transaction('msgs','readwrite');tx.objectStore('msgs').put(m);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error)})}
-async function getMsgs(peer){let d=await db();return new Promise((res,rej)=>{let tx=d.transaction('msgs','readonly'),r=tx.objectStore('msgs').getAll();r.onsuccess=()=>res(r.result.filter(x=>x.pair===pairKey(state.id,peer)).sort((a,b)=>a.ts-b.ts));r.onerror=()=>rej(r.error)})}
-async function deleteMsgs(peer){let d=await db(),list=await getMsgs(peer);return new Promise(res=>{let tx=d.transaction('msgs','readwrite'),s=tx.objectStore('msgs');list.forEach(m=>s.delete(m.key));tx.oncomplete=()=>res()})}
-function pairKey(a,b){return[a,b].sort().join('::')}
-function bytesToB64(b){return btoa(String.fromCharCode(...new Uint8Array(b)))}function b64ToBytes(s){return Uint8Array.from(atob(s),c=>c.charCodeAt(0))}
-async function getKey(peer){const pair=pairKey(state.id,peer);if(state.keys[pair])return state.keys[pair];const pass=localStorage.getItem('murmur_passphrase')||'';if(pass.length<8)throw new Error('Set a chat passphrase (minimum 8 characters) in settings first.');const salt=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('murmur-v1:'+pair));const material=await crypto.subtle.importKey('raw',new TextEncoder().encode(pass),'PBKDF2',false,['deriveKey']);const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:250000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);state.keys[pair]=key;return key}
-async function encrypt(peer,obj){let k=await getKey(peer),iv=crypto.getRandomValues(new Uint8Array(12)),data=new TextEncoder().encode(JSON.stringify(obj)),cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv},k,data);return{iv:bytesToB64(iv),cipher:bytesToB64(cipher)}}
-async function decrypt(peer,payload){let k=await getKey(peer),clear=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64ToBytes(payload.iv)},k,b64ToBytes(payload.cipher));return JSON.parse(new TextDecoder().decode(clear))}
-function persistContacts(){localStorage.setItem('murmur_contacts',JSON.stringify(state.contacts))}
-function displayName(peer){let n=state.contacts[peer]?.name||'';return !n||n===peer?'Friend':n}
-function addContact(id,name='Friend'){if(!id||id===state.id)return;state.contacts[id]={name:name||'Friend'};persistContacts();renderContacts();}
-function renderContacts(){let box=$('contacts'),q=$('searchContacts').value.toLowerCase();let ids=Object.keys(state.contacts).filter(id=>(displayName(id)+' '+id).toLowerCase().includes(q));if(!ids.length){box.innerHTML='<div class="empty">No contacts found.</div>';return}box.innerHTML='';ids.forEach(id=>{let b=document.createElement('button');b.className='contact'+(state.active===id?' active':'');b.innerHTML=`<div class="avatar">${escapeHtml(displayName(id).slice(0,1).toUpperCase())}</div><div class="info"><strong>${escapeHtml(displayName(id))}</strong><small>${state.connections.has(id)?'Connected':'Private contact'}</small></div><span class="dot" title="Contact"></span>`;b.onclick=()=>selectChat(id);box.append(b)})}
+
+/* ---------- helpers ---------- */
+function toast(t){const el=$('toast');el.textContent=t;el.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>el.classList.remove('show'),3000)}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function renderMessage(m){let el=document.createElement('div');el.className='bubble'+(m.from===state.id?' mine':'');if(m.type==='text')el.textContent=m.text;else if(m.type==='file'){let a=document.createElement('a');a.textContent='📎 '+m.name+' ('+Math.ceil(m.size/1024)+' KB)';a.href=m.data;a.download=m.name;a.style.color='inherit';el.append(a)}let time=document.createElement('span');time.className='time';time.textContent=new Date(m.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});el.append(time);$('messages').append(el);$('messages').scrollTop=$('messages').scrollHeight;if(m.expireAt){let delay=m.expireAt-Date.now();if(delay<=0)el.remove();else setTimeout(()=>el.remove(),delay)}}
-async function selectChat(peer){state.active=peer;addContact(peer);$('app').classList.add('chatmode');$('chatTitle').textContent=displayName(peer);$('chatAvatar').textContent=displayName(peer).slice(0,1).toUpperCase();$('chatStatus').textContent=state.connections.has(peer)?'Connected securely (encrypted payloads)':'Not connected';$('messageInput').disabled=false;$('sendBtn').disabled=false;$('messages').innerHTML='';let history=await getMsgs(peer);history.forEach(renderMessage);renderContacts();connect(peer);}
-function connect(peer){if(state.connections.has(peer))return state.connections.get(peer);if(!state.peer){toast('Peer network is not ready yet');return null}let c=state.peer.connect(peer,{reliable:true,metadata:{murmur:1}});bindConnection(c);return c}
-function bindConnection(c){if(!c||state.connections.has(c.peer))return;state.connections.set(c.peer,c);c.on('open',()=>{if(state.active===c.peer)$('chatStatus').textContent='Connected · encrypted chat';renderContacts()});c.on('data',async packet=>{try{if(packet?.murmur!==1||!packet.payload)return;let msg=await decrypt(c.peer,packet.payload);if(!['text','file'].includes(msg.type))return;if(msg.expireAt&&msg.expireAt<Date.now())return;msg.from=c.peer;msg.to=state.id;msg.pair=pairKey(state.id,c.peer);msg.key=crypto.randomUUID();await putMsg(msg);if(state.active===c.peer)renderMessage(msg);else toast('New message from '+displayName(c.peer));}catch(e){console.warn('decrypt failed',e);toast('Message could not be decrypted. Check your shared passphrase.')}});c.on('close',()=>{state.connections.delete(c.peer);if(state.active===c.peer)$('chatStatus').textContent='Disconnected';renderContacts()});c.on('error',e=>toast('Connection error: '+e.type));return c}
-state.peer=null;
-async function sendObj(peer,msg){let c=state.connections.get(peer)||connect(peer);if(!c||!c.open)throw new Error('Contact not connected yet. Wait for connection, then try again.');let payload=await encrypt(peer,msg);c.send({murmur:1,payload});}
-async function sendText(){let peer=state.active,text=$('messageInput').value.trim();if(!peer||!text)return;let msg={type:'text',text,from:state.id,to:peer,ts:Date.now(),expireAt:state.ttl?Date.now()+state.ttl*1000:0,pair:pairKey(state.id,peer),key:crypto.randomUUID()};try{await sendObj(peer,msg);await putMsg(msg);renderMessage(msg);$('messageInput').value='';$('messageInput').style.height='auto'}catch(e){toast(e.message)}}
-async function sendFile(file){if(!state.active||!file)return;if(file.size>8*1024*1024){toast('File limit: 8 MB');return}let data=await new Promise((res,rej)=>{let r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(r.error);r.readAsDataURL(file)});let msg={type:'file',name:file.name,size:file.size,mime:file.type,data,from:state.id,to:state.active,ts:Date.now(),expireAt:state.ttl?Date.now()+state.ttl*1000:0,pair:pairKey(state.id,state.active),key:crypto.randomUUID()};try{await sendObj(state.active,msg);await putMsg(msg);renderMessage(msg)}catch(e){toast(e.message)}}
-function applyTheme(){document.body.classList.toggle('dark',state.theme==='dark'||(state.theme==='system'&&matchMedia('(prefers-color-scheme: dark)').matches));document.documentElement.style.setProperty('--accent',state.accent);document.documentElement.style.setProperty('--accent2',state.accent);document.documentElement.style.setProperty('--radius',state.bubble==='square'?'8px':state.bubble==='soft'?'14px':'20px')}
+function bytesToB64(b){return btoa(String.fromCharCode(...new Uint8Array(b)))}
+function b64ToBytes(s){const bin=atob(s),a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a}
+function pairKey(a,b){return[a,b].sort().join('::')}
+function displayName(peer){return state.contacts[peer]?.name||peer}
+
+/* ---------- IndexedDB ---------- */
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open(dbName,1);r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains('msgs'))d.createObjectStore('msgs',{keyPath:'key'});if(!d.objectStoreNames.contains('meta'))d.createObjectStore('meta',{keyPath:'key'})};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+async function metaGet(k){const d=await openDB();return new Promise((res,rej)=>{const r=d.transaction('meta','readonly').objectStore('meta').get(k);r.onsuccess=()=>res(r.result?.value);r.onerror=()=>rej(r.error)})}
+async function metaSet(k,v){const d=await openDB();return new Promise((res,rej)=>{const tx=d.transaction('meta','readwrite');tx.objectStore('meta').put({key:k,value:v});tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error)})}
+async function putMsg(m){const d=await openDB();return new Promise((res,rej)=>{const tx=d.transaction('msgs','readwrite');tx.objectStore('msgs').put(m);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error)})}
+async function getMsgs(peer){const d=await openDB();return new Promise((res,rej)=>{const r=d.transaction('msgs','readonly').objectStore('msgs').getAll();r.onsuccess=()=>res(r.result.filter(x=>x.pair===pairKey(state.id,peer)).sort((a,b)=>a.ts-b.ts));r.onerror=()=>rej(r.error)})}
+
+/* ---------- CRYPTO ---------- */
+async function generateIdentity(){
+  const temp=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);
+  const pubRaw=new Uint8Array(await crypto.subtle.exportKey('raw',temp.publicKey));
+  const privJwk=await crypto.subtle.exportKey('jwk',temp.privateKey);
+  const privateKey=await crypto.subtle.importKey('jwk',privJwk,{name:'ECDH',namedCurve:'P-256'},false,['deriveBits']);
+  return {privateKey, publicRaw:pubRaw};
+}
+async function importPeerPub(rawB64){return crypto.subtle.importKey('raw',b64ToBytes(rawB64),{name:'ECDH',namedCurve:'P-256'},false,[])}
+async function computeShared(priv,pub){return new Uint8Array(await crypto.subtle.deriveBits({name:'ECDH',public:pub},priv,256))}
+async function deriveMsgKey(shared){const ikm=await crypto.subtle.importKey('raw',shared,'HKDF',false,['deriveKey']);return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:new Uint8Array(0),info:new TextEncoder().encode('murmur-v2-msg')},ikm,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])}
+
+async function encryptForPeer(theirPub, plaintext){
+  const eph=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);
+  const shared=await computeShared(eph.privateKey, theirPub);
+  const key=await deriveMsgKey(shared);
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(plaintext));
+  const ephPub=new Uint8Array(await crypto.subtle.exportKey('raw',eph.publicKey));
+  return {eph:bytesToB64(ephPub), iv:bytesToB64(iv), ct:bytesToB64(ct)};
+}
+async function decryptFromPeer(ourPriv, ephB64, ivB64, ctB64){
+  const ephPub=await importPeerPub(ephB64);
+  const shared=await computeShared(ourPriv, ephPub);
+  const key=await deriveMsgKey(shared);
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64ToBytes(ivB64)},key,b64ToBytes(ctB64));
+  return new TextDecoder().decode(pt);
+}
+async function safetyNumber(ourPub, theirPub){
+  const a=new Uint8Array(ourPub), b=new Uint8Array(theirPub);
+  const [x,y]=[a,b].sort((p,q)=>{for(let i=0;i<Math.min(p.length,q.length);i++)if(p[i]!==q[i])return p[i]-q[i];return p.length-q.length});
+  const combined=new Uint8Array(x.length+y.length);combined.set(x,0);combined.set(y,x.length);
+  const hash=new Uint8Array(await crypto.subtle.digest('SHA-256',combined));
+  let big=0n;for(let i=0;i<25;i++)big=(big<<8n)|BigInt(hash[i]);
+  let str=big.toString();while(str.length<60)str='0'+str;str=str.slice(0,60);
+  return str.match(/.{1,5}/g).join(' ');
+}
+
+/* ---------- contacts ---------- */
+function persistContacts(){localStorage.setItem('murmur_contacts',JSON.stringify(state.contacts))}
+function addContact(id,name=id){if(!id||id===state.id)return;if(!state.contacts[id]){state.contacts[id]={name:name||id,pubKey:null,verified:false};persistContacts();renderContacts()}}
+function renderContacts(){
+  const box=$('contacts'),q=$('searchContacts').value.toLowerCase();
+  const ids=Object.keys(state.contacts).filter(id=>(displayName(id)+' '+id).toLowerCase().includes(q));
+  if(!ids.length){box.innerHTML='<div class="empty">No conversations yet.<br>Tap “Add friend” to start.</div>';return}
+  box.innerHTML='';
+  ids.forEach(id=>{
+    const c=state.contacts[id], b=document.createElement('button');
+    b.className='contact'+(state.active===id?' active':'');
+    const badge=c.verified?'<span class="badge verified" title="Verified">✓</span>':'<span class="badge unverified" title="Unverified">!</span>';
+    b.innerHTML=`<div class="avatar">${escapeHtml(displayName(id).slice(0,1).toUpperCase())}</div><div class="info"><strong>${escapeHtml(displayName(id))}</strong><small>${escapeHtml(id)}</small></div>${badge}`;
+    b.onclick=()=>selectChat(id);box.append(b);
+  });
+}
+
+/* ---------- messages ---------- */
+function renderMessage(m){
+  const el=document.createElement('div');el.className='bubble'+(m.from===state.id?' mine':'');
+  if(m.type==='text')el.textContent=m.text;
+  else if(m.type==='file'){const a=document.createElement('a');a.textContent='📎 '+m.name+' ('+Math.ceil(m.size/1024)+' KB)';a.href=m.data;a.download=m.name;a.style.color='inherit';el.append(a)}
+  const time=document.createElement('span');time.className='time';time.textContent=new Date(m.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});el.append(time);
+  $('messages').append(el);$('messages').scrollTop=$('messages').scrollHeight;
+  if(m.expireAt){const d=m.expireAt-Date.now();if(d<=0)el.remove();else setTimeout(()=>el.remove(),d)}
+}
+
+function updateChatStatus(){
+  if(!state.active)return;
+  const c=state.contacts[state.active], conn=state.connections.get(state.active);
+  let s = conn?.open?'Connected':'Connecting…';
+  if(!c?.pubKey)s+=' · Exchanging keys…';
+  else if(c.verified)s+=' · 🔒 Verified';
+  else s+=' · ⚠ Unverified';
+  $('chatStatus').textContent=s;
+  if(state.active){const a=state.contacts[state.active];$('chatAvatar').textContent=(a?.name||'?').slice(0,1).toUpperCase()}
+}
+
+async function selectChat(peer){
+  state.active=peer;addContact(peer);
+  $('app').classList.add('chatmode');
+  $('chatTitle').textContent=displayName(peer);
+  updateChatStatus();
+  $('messageInput').disabled=false;$('sendBtn').disabled=false;
+  $('messages').innerHTML='<div class="empty"><div class="big">◌</div><strong>Loading…</strong></div>';
+  const history=await getMsgs(peer);
+  if(state.active!==peer)return;
+  $('messages').innerHTML='';
+  if(!history.length)$('messages').innerHTML='<div class="empty"><div class="big">◌</div><strong>Say hello.</strong><p>Messages are encrypted on your device with per-message ephemeral keys.</p></div>';
+  else history.forEach(renderMessage);
+  renderContacts();
+  if(!state.connections.has(peer))connect(peer);
+}
+
+/* ---------- connections ---------- */
+function connect(peer){
+  if(state.connections.has(peer))return state.connections.get(peer);
+  if(!state.peer||state.peer.destroyed){toast('Peer network not ready');return null}
+  const c=state.peer.connect(peer,{reliable:true,metadata:{murmur:2}});
+  return bindConnection(c);
+}
+
+function bindConnection(c){
+  if(!c||state.connections.has(c.peer))return c;
+  state.connections.set(c.peer,c);
+  c.on('open',()=>{
+    if(state.active===c.peer)updateChatStatus();
+    try{c.send({murmur:2,type:'handshake',pub:bytesToB64(state.identity.publicRaw)})}catch(e){console.warn('handshake send failed',e)}
+    renderContacts();
+  });
+  c.on('data',async packet=>{
+    try{
+      if(packet?.murmur!==2)return;
+      if(packet.type==='handshake'){await handleHandshake(c.peer,packet.pub);return}
+      if(packet.type==='msg'){
+        const contact=state.contacts[c.peer];
+        if(!contact?.pubKey){toast('Received message before key exchange');return}
+        const json=await decryptFromPeer(state.identity.privateKey,packet.eph,packet.iv,packet.ct);
+        const msgObj=JSON.parse(json);
+        if(!['text','file'].includes(msgObj.type))return;
+        if(msgObj.expireAt&&msgObj.expireAt<Date.now())return;
+        const msg={...msgObj,from:c.peer,to:state.id,pair:pairKey(state.id,c.peer),key:crypto.randomUUID()};
+        await putMsg(msg);
+        if(state.active===c.peer)renderMessage(msg);
+        else toast('New message from '+displayName(c.peer));
+      }
+    }catch(e){console.warn('decrypt failed',e);toast('Could not decrypt message')}
+  });
+  c.on('close',()=>{
+    state.connections.delete(c.peer);
+    if(state.active===c.peer)updateChatStatus();
+    renderContacts();
+  });
+  c.on('error',e=>{
+    state.connections.delete(c.peer);
+    if(state.active===c.peer)updateChatStatus();
+    if(e?.type==='peer-unavailable')toast('Contact is offline or ID is invalid');
+    else toast('Connection error: '+(e?.type||'unknown'));
+  });
+  return c;
+}
+
+async function handleHandshake(peerId, pubB64){
+  if(!state.contacts[peerId])addContact(peerId);
+  const contact=state.contacts[peerId];
+  const isNew=!contact.pubKey;
+  const changed=contact.pubKey && contact.pubKey!==pubB64;
+  contact.pubKey=pubB64;
+  if(isNew){
+    contact.verified=false;persistContacts();renderContacts();updateChatStatus();
+    toast('Key received. Tap ⌁ to verify '+displayName(peerId));
+  }else if(changed){
+    contact.verified=false;persistContacts();renderContacts();updateChatStatus();
+    showKeyChangeAlert(peerId);
+  }else{
+    updateChatStatus();
+  }
+}
+
+/* ---------- send ---------- */
+async function sendObj(peer, msgObj){
+  const contact=state.contacts[peer];
+  if(!contact?.pubKey)throw new Error('Waiting for key exchange…');
+  const c=state.connections.get(peer);
+  if(!c?.open)throw new Error('Not connected');
+  const theirPub=await importPeerPub(contact.pubKey);
+  const encrypted=await encryptForPeer(theirPub, JSON.stringify(msgObj));
+  c.send({murmur:2,type:'msg',...encrypted});
+}
+
+async function sendText(){
+  const peer=state.active, text=$('messageInput').value.trim();
+  if(!peer||!text)return;
+  const msgObj={type:'text',text,ts:Date.now(),expireAt:state.ttl?Date.now()+state.ttl*1000:0};
+  try{
+    await sendObj(peer,msgObj);
+    const local={...msgObj,from:state.id,to:peer,pair:pairKey(state.id,peer),key:crypto.randomUUID()};
+    await putMsg(local);
+    $('messageInput').value='';$('messageInput').style.height='auto';
+    if(state.active===peer)renderMessage(local);
+  }catch(e){toast(e.message)}
+}
+
+async function sendFile(file){
+  if(!state.active||!file)return;
+  if(file.size>8*1024*1024){toast('File limit: 8 MB');return}
+  const peer=state.active;
+  const data=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(r.error);r.readAsDataURL(file)});
+  const msgObj={type:'file',name:file.name,size:file.size,mime:file.type,data,ts:Date.now(),expireAt:state.ttl?Date.now()+state.ttl*1000:0};
+  try{
+    await sendObj(peer,msgObj);
+    const local={...msgObj,from:state.id,to:peer,pair:pairKey(state.id,peer),key:crypto.randomUUID()};
+    await putMsg(local);
+    if(state.active===peer)renderMessage(local);
+  }catch(e){toast(e.message)}
+}
+
+/* ---------- appearance ---------- */
+function applyTheme(){
+  document.body.classList.toggle('dark',state.theme==='dark'||(state.theme==='system'&&matchMedia('(prefers-color-scheme: dark)').matches));
+  document.documentElement.style.setProperty('--accent',state.accent);
+  document.documentElement.style.setProperty('--accent2',state.accent);
+  document.documentElement.style.setProperty('--radius',state.bubble==='square'?'8px':state.bubble==='soft'?'14px':'20px');
+}
 function saveSettings(){localStorage.setItem('murmur_settings',JSON.stringify({theme:state.theme,accent:state.accent,bubble:state.bubble,ttl:state.ttl}));applyTheme()}
-function showModal(content){$('modal').innerHTML=content;$('modalback').style.display='flex'}function closeModal(){$('modalback').style.display='none'}
-function settings(){showModal(`<h2>Appearance & privacy</h2><div class="field"><label>Theme</label><select id="setTheme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></div><div class="field"><label>Accent color</label><div class="colors" id="colorChoices"></div></div><div class="field"><label>Message bubble shape</label><select id="setBubble"><option value="rounded">Rounded</option><option value="soft">Soft</option><option value="square">Square</option></select></div><div class="field"><label>Disappearing messages</label><select id="setTTL"><option value="0">Off</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="300">5 minutes</option><option value="3600">1 hour</option><option value="86400">24 hours</option></select></div><div class="field"><label>Auto-lock</label><select id="setAutoLock"><option value="30">30 seconds</option><option value="60">1 minute</option><option value="300">5 minutes</option><option value="900">15 minutes</option><option value="1800">30 minutes</option><option value="3600">1 hour</option><option value="0">Never</option></select></div><div class="field"><label>Shared chat passphrase (8+ characters)</label><input id="setPass" type="password" autocomplete="new-password" placeholder="Passphrase"></div><p style="font-size:12px;color:var(--muted)">Passphrase is stored locally. This prototype does not provide forward secrecy or audited Signal Protocol security.</p><div class="field"><button class="btn" style="width:100%" id="lockNow">Lock Murmur now</button></div><hr style="border:0;border-top:1px solid var(--line);margin:18px 0"><div class="field"><button class="btn dangerbtn" style="width:100%" id="deleteMessages">Delete all messages</button></div><div class="field"><button class="btn" style="width:100%" id="logoutBtn">Logout</button></div><div class="field"><button class="btn dangerbtn" style="width:100%" id="wipeBtn">Wipe account & all local data</button></div><div class="modalactions"><button class="btn" id="cancelSettings">Close</button><button class="btn primary" id="saveSettings">Save changes</button></div>`);
-$('setTheme').value=state.theme;$('setBubble').value=state.bubble;$('setTTL').value=String(state.ttl);$('setAutoLock').value=String(localStorage.getItem('murmur_autolock')||'300');$('setPass').value=localStorage.getItem('murmur_passphrase')||'';let choices=$('colorChoices');accents.forEach(col=>{let b=document.createElement('button');b.className='swatch'+(col===state.accent?' selected':'');b.style.background=col;b.title=col;b.onclick=()=>{state.accent=col;choices.querySelectorAll('.swatch').forEach(x=>x.classList.remove('selected'));b.classList.add('selected')};choices.append(b)});$('cancelSettings').onclick=closeModal;$('saveSettings').onclick=()=>{let p=$('setPass').value;if(p&&p.length<8){toast('Passphrase must be at least 8 characters');return}state.theme=$('setTheme').value;state.bubble=$('setBubble').value;state.ttl=Number($('setTTL').value);localStorage.setItem('murmur_autolock',$('setAutoLock').value);if(p)localStorage.setItem('murmur_passphrase',p);saveSettings();resetLockTimer();closeModal();toast('Settings saved')};$('lockNow').onclick=()=>{closeModal();lockApp()};$('deleteMessages').onclick=async()=>{if(!confirm('Delete all messages stored on this device? This cannot be undone.'))return;await deleteAllMessages();closeModal();toast('All local messages deleted')};$('logoutBtn').onclick=logoutAccount;$('wipeBtn').onclick=wipeAccount}function newChat(){showModal(`<h2>Start a conversation</h2><div class="field"><label>Contact Peer ID</label><input id="peerInput" placeholder="Paste Murmur / Peer ID"></div><div class="field"><label>Display name (optional)</label><input id="nameInput" placeholder="Contact name"></div><div class="modalactions"><button class="btn" id="cancelNew">Cancel</button><button class="btn primary" id="startNew">Connect</button></div>`);$('cancelNew').onclick=closeModal;$('startNew').onclick=()=>{let id=$('peerInput').value.trim(),name=$('nameInput').value.trim();if(!id){toast('Enter a Peer ID');return}closeModal();addContact(id,name||'Friend');selectChat(id)}}
-async function safety(){if(!state.active){toast('Select a contact first');return}let pair=pairKey(state.id,state.active),digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('murmur-safety-v1:'+pair)),finger=Array.from(new Uint8Array(digest)).map(x=>x.toString(16).padStart(2,'0')).join('').toUpperCase().match(/.{1,4}/g).join(' ');showModal(`<h2>Contact verification</h2><p>Compare this code with your contact over a separate trusted channel. This code identifies the ID pair, but does not by itself authenticate the person.</p><div style="background:var(--bg);padding:14px;border-radius:12px;font-family:monospace;line-height:1.8;word-break:break-all">${finger}</div><p style="color:var(--muted);font-size:12px">Your ID: ${escapeHtml(state.id)}<br>Contact ID: ${escapeHtml(state.active)}</p><div class="modalactions"><button class="btn primary" id="okSafety">Close</button></div>`);$('okSafety').onclick=closeModal}
-let lockTimer=null,locked=false;
-function resetLockTimer(){if(lockTimer)clearTimeout(lockTimer);if(locked)return;let seconds=Number(localStorage.getItem('murmur_autolock')||300);if(seconds>0)lockTimer=setTimeout(lockApp,seconds*1000)}
-function lockApp(){if(locked)return;locked=true;if(state.peer){try{state.peer.destroy()}catch{}}state.peer=null;state.connections.clear();$('lockscreen').classList.add('show');$('unlockPass').value='';setTimeout(()=>$('unlockPass').focus(),80)}
-function unlockApp(){let val=$('unlockPass').value;if(val!==localStorage.getItem('murmur_passphrase')){toast('Passphrase incorrect');$('unlockPass').value='';return}locked=false;$('lockscreen').classList.remove('show');bootNetworkOnly();resetLockTimer()}
-function bootNetworkOnly(){if(!window.Peer)return;if(state.peer&&state.peer.destroyed===false)return;try{state.peer=new Peer(state.id,{debug:0});state.peer.on('open',id=>{state.id=id;$('chatStatus').textContent='Peer network ready'});state.peer.on('connection',c=>{bindConnection(c);if(!state.contacts[c.peer])addContact(c.peer)});state.peer.on('error',e=>toast('Peer network: '+e.type))}catch(e){console.error(e)}}
-async function deleteAllMessages(){try{let d=await db();await new Promise((resolve,reject)=>{let tx=d.transaction('msgs','readwrite');tx.objectStore('msgs').clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});$('messages').innerHTML='<div class="empty"><div class="big">◌</div><strong>Messages cleared</strong><p>Local conversation history has been removed.</p></div>'}catch(e){toast('Unable to clear message database')}}
-function logoutAccount(){if(!confirm('Logout from Murmur on this device? Your local chats and contacts will be kept, but your identity setup will need to be completed again.'))return;try{state.peer?.destroy()}catch{}localStorage.removeItem('murmur_name');localStorage.removeItem('murmur_passphrase');locked=false;location.reload()}
-async function wipeAccount(){if(!confirm('WIPE ACCOUNT: permanently delete identity, contacts, messages, keys, settings and local data?'))return;if(!confirm('Last confirmation. This cannot be undone. Wipe everything now?'))return;try{state.peer?.destroy()}catch{}try{localStorage.clear();sessionStorage.clear();await new Promise(resolve=>{let req=indexedDB.deleteDatabase(dbName);req.onsuccess=req.onerror=req.onblocked=()=>resolve()})}finally{location.reload()}}
-function init(){let user=localStorage.getItem('murmur_name');if(!user){showModal(`<h2>Welcome to Murmur</h2><p>Choose a display name to create your private chat identity.</p><div class="field"><label>Your name</label><input id="firstName" maxlength="32" placeholder="Display name"></div><div class="field"><label>Chat passphrase (shared with contacts, 8+ characters)</label><input id="firstPass" type="password" placeholder="Choose a passphrase"></div><p style="color:var(--muted);font-size:12px">For this prototype, both people must use the same passphrase for their conversation.</p><div class="modalactions"><button class="btn primary" id="createIdentity">Create identity</button></div>`);$('createIdentity').onclick=()=>{let n=$('firstName').value.trim(),p=$('firstPass').value;if(!n||p.length<8){toast('Enter a name and passphrase (8+ characters)');return}localStorage.setItem('murmur_name',n);localStorage.setItem('murmur_passphrase',p);closeModal();boot()};return}boot()}
-function boot(){state.name=localStorage.getItem('murmur_name')||'Guest';state.id=localStorage.getItem('murmur_peerid');if(!state.id){state.id='murmur-'+crypto.randomUUID().replaceAll('-','').slice(0,18);localStorage.setItem('murmur_peerid',state.id)}try{state.contacts=JSON.parse(localStorage.getItem('murmur_contacts')||'{}')}catch{}try{let s=JSON.parse(localStorage.getItem('murmur_settings')||'{}');Object.assign(state,s)}catch{}$('myName').textContent=state.name;$('myId').value=state.id;applyTheme();renderContacts();resetLockTimer();if(!window.Peer){$('chatStatus').textContent='PeerJS failed to load';toast('PeerJS library unavailable');return}state.peer=new Peer(state.id,{debug:0});state.peer.on('open',id=>{$('chatStatus').textContent='Peer network ready';$('myId').value=id;state.id=id});state.peer.on('connection',c=>{bindConnection(c);if(!state.contacts[c.peer])addContact(c.peer,'Friend');toast('Incoming connection: '+displayName(c.peer))});state.peer.on('error',e=>{console.warn(e);if(e.type==='unavailable-id'){toast('Your ID is already in use. Refresh to generate a new ID.')}else toast('Peer network: '+e.type)});}
-$('copyId').onclick=()=>{navigator.clipboard?.writeText(state.id).then(()=>toast('ID copied')).catch(()=>toast('Unable to copy'))};$('newChat').onclick=newChat;$('settingsBtn').onclick=settings;if($('profileBtn'))$('profileBtn').onclick=profile;$('safetyBtn').onclick=safety;$('unlockBtn').onclick=unlockApp;$('unlockPass').onkeydown=e=>{if(e.key==='Enter')unlockApp()};['pointerdown','keydown','touchstart','mousemove'].forEach(ev=>document.addEventListener(ev,resetLockTimer,{passive:true}));$('sendBtn').onclick=sendText;$('attachBtn').onclick=()=>$('fileInput').click();$('fileInput').onchange=()=>{let f=$('fileInput').files[0];if(f)sendFile(f);$('fileInput').value=''};$('messageInput').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendText()}};$('messageInput').oninput=e=>{e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,140)+'px'};$('searchContacts').oninput=renderContacts;$('backBtn').onclick=()=>$('app').classList.remove('chatmode');$('modalback').onclick=e=>{if(e.target===$('modalback'))closeModal()};window.addEventListener('storage',()=>{});init();
+
+/* ---------- modals ---------- */
+function showModal(html){$('modal').innerHTML=html;$('modalback').style.display='flex'}
+function closeModal(){$('modalback').style.display='none'}
+
+function settings(){
+  showModal(`<h2>Appearance & privacy</h2>
+  <div class="field"><label>Theme</label><select id="setTheme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
+  <div class="field"><label>Accent color</label><div class="colors" id="colorChoices"></div></div>
+  <div class="field"><label>Message bubble shape</label><select id="setBubble"><option value="rounded">Rounded</option><option value="soft">Soft</option><option value="square">Square</option></select></div>
+  <div class="field"><label>Disappearing messages</label><select id="setTTL"><option value="0">Off</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="300">5 minutes</option><option value="3600">1 hour</option><option value="86400">24 hours</option></select></div>
+  <p style="font-size:12px;color:var(--muted);line-height:1.5">🔒 <strong>Security model:</strong> messages are encrypted with per-message ephemeral ECDH keys (forward secrecy). Verify each contact's safety number over a trusted channel before sharing sensitive information.</p>
+  <div class="modalactions"><button class="btn" id="cancelSettings">Close</button><button class="btn primary" id="saveSettings">Save</button></div>`);
+  $('setTheme').value=state.theme;$('setBubble').value=state.bubble;$('setTTL').value=String(state.ttl);
+  const choices=$('colorChoices');
+  accents.forEach(col=>{const b=document.createElement('button');b.className='swatch'+(col===state.accent?' selected':'');b.style.background=col;b.title=col;b.onclick=()=>{state.accent=col;choices.querySelectorAll('.swatch').forEach(x=>x.classList.remove('selected'));b.classList.add('selected')};choices.append(b)});
+  $('cancelSettings').onclick=closeModal;
+  $('saveSettings').onclick=()=>{state.theme=$('setTheme').value;state.bubble=$('setBubble').value;state.ttl=Number($('setTTL').value);saveSettings();closeModal();toast('Settings saved')};
+}
+
+function inviteData(){return location.href.split('#')[0]+'#invite='+encodeURIComponent(JSON.stringify({id:state.id,name:state.name}))}
+
+function profile(){
+  const link=inviteData();
+  showModal(`<div class="profilecard">
+    <div class="avatar">${escapeHtml((state.name||'M').slice(0,1).toUpperCase())}</div>
+    <h2>${escapeHtml(state.name)}</h2>
+    <p>Share this invite link or QR. Your public key is exchanged automatically after connection.</p>
+    <div class="qrwrap"><div id="profileQR"></div></div>
+    <div class="sharelink">${escapeHtml(link)}</div>
+    <div class="modalactions" style="justify-content:center;flex-wrap:wrap">
+      <button class="btn" id="copyInvite">Copy invite</button>
+      <button class="btn primary" id="shareInvite">Share profile</button>
+    </div>
+    <p style="font-size:11px;color:var(--muted)">Your technical PeerJS ID is embedded in the link.</p>
+  </div>`);
+  try{new QRCode($('profileQR'),{text:link,width:190,height:190,colorDark:'#17221e',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M})}catch{$('profileQR').textContent='QR code unavailable'}
+  $('copyInvite').onclick=()=>navigator.clipboard?.writeText(link).then(()=>toast('Invite copied')).catch(()=>toast('Copy failed'));
+  $('shareInvite').onclick=()=>{if(navigator.share)navigator.share({title:'Murmur invite',url:link}).catch(()=>{});else navigator.clipboard?.writeText(link).then(()=>toast('Invite copied'))};
+}
+
+function newChat(){
+  let invited={};
+  try{if(location.hash.startsWith('#invite='))invited=JSON.parse(decodeURIComponent(location.hash.slice(8)))}catch{}
+  showModal(`<h2>Add a friend</h2>
+  <p style="font-size:13px;color:var(--muted)">Paste an invite link or Peer ID. Keys are exchanged automatically after connection.</p>
+  <div class="field"><label>Invite link or Peer ID</label><input id="peerInput" placeholder="Paste invite link or ID" value="${escapeHtml(invited.id||'')}"></div>
+  <div class="field"><label>Name (optional)</label><input id="nameInput" placeholder="Friend's name" value="${escapeHtml(invited.name||'')}"></div>
+  <div class="modalactions"><button class="btn" id="cancelNew">Cancel</button><button class="btn primary" id="startNew">Connect</button></div>`);
+  $('cancelNew').onclick=closeModal;
+  $('startNew').onclick=()=>{
+    let raw=$('peerInput').value.trim(),name=$('nameInput').value.trim(),id=raw;
+    try{if(raw.includes('#invite=')){const u=new URL(raw),data=JSON.parse(decodeURIComponent(u.hash.slice(8)));id=data.id;if(!name)name=data.name||''}}catch{}
+    if(!id){toast('Paste an invite link or Peer ID');return}
+    closeModal();addContact(id,name||id);selectChat(id);
+  };
+}
+
+async function safety(){
+  if(!state.active){toast('Select a contact first');return}
+  const contact=state.contacts[state.active];
+  if(!contact?.pubKey){toast('Waiting for key exchange…');return}
+  const sn=await safetyNumber(state.identity.publicRaw, b64ToBytes(contact.pubKey));
+  const verifiedBadge=contact.verified?'<span style="color:#287b63;font-weight:700">✓ Verified</span>':'<span style="color:#a86b00;font-weight:700">⚠ Unverified</span>';
+  showModal(`<h2>Safety number</h2>
+  <p>Compare this number with <strong>${escapeHtml(displayName(state.active))}</strong> over a trusted channel (voice call or in person).</p>
+  <div style="background:var(--bg);padding:16px;border-radius:12px;font-family:ui-monospace,monospace;font-size:14px;letter-spacing:1px;line-height:2;word-break:break-all;text-align:center;user-select:all">${sn}</div>
+  <p style="font-size:12px;color:var(--muted)">Status: ${verifiedBadge}</p>
+  <p style="font-size:12px;color:var(--muted)">If numbers match, mark as verified. If not, someone may be intercepting — do not trust this contact.</p>
+  <div class="modalactions">
+    <button class="btn" id="cancelVerify">Close</button>
+    <button class="btn primary" id="confirmVerify">${contact.verified?'Re-verify':'I verified — trust'}</button>
+  </div>`);
+  $('cancelVerify').onclick=closeModal;
+  $('confirmVerify').onclick=()=>{
+    contact.verified=true;persistContacts();renderContacts();updateChatStatus();
+    closeModal();toast('✓ Contact verified');
+  };
+}
+
+function showKeyChangeAlert(peerId){
+  showModal(`<h2 style="color:#c44">⚠ Security alert</h2>
+  <p>The encryption key for <strong>${escapeHtml(displayName(peerId))}</strong> has changed.</p>
+  <p style="font-size:13px;color:var(--muted);line-height:1.6">This can mean:</p>
+  <ul style="font-size:13px;color:var(--muted);line-height:1.7">
+    <li>They reinstalled the app or cleared data</li>
+    <li>Someone is intercepting your conversation (man-in-the-middle)</li>
+  </ul>
+  <p style="font-size:13px">Verify the safety number with them over a trusted channel before continuing.</p>
+  <div class="modalactions"><button class="btn primary" id="okKeyChange">Got it</button></div>`);
+  $('okKeyChange').onclick=closeModal;
+}
+
+/* ---------- boot ---------- */
+async function init(){
+  if(!crypto.subtle){document.body.innerHTML='<div style="padding:40px;font-family:sans-serif;text-align:center"><h2>Insecure context</h2><p>Murmur requires HTTPS (or localhost). Web Crypto is unavailable.</p></div>';return}
+  state.identity=await metaGet('identity');
+  if(!state.identity){state.identity=await generateIdentity();await metaSet('identity',state.identity)}
+  if(!localStorage.getItem('murmur_name')){
+    showModal(`<h2>Welcome to Murmur</h2>
+    <p>Choose a display name. Your encryption keys are generated automatically on this device.</p>
+    <div class="field"><label>Your name</label><input id="firstName" maxlength="32" placeholder="Display name"></div>
+    <p style="font-size:12px;color:var(--muted);line-height:1.5">🔐 End-to-end encryption with ECDH P-256. Forward secrecy per message. Verify safety numbers with each contact.</p>
+    <div class="modalactions"><button class="btn primary" id="createIdentity">Create identity</button></div>`);
+    $('createIdentity').onclick=()=>{
+      const n=$('firstName').value.trim();
+      if(!n){toast('Enter a name');return}
+      localStorage.setItem('murmur_name',n);closeModal();boot();
+    };
+    return;
+  }
+  boot();
+}
+
+function boot(){
+  state.name=localStorage.getItem('murmur_name')||'Guest';
+  state.id=localStorage.getItem('murmur_peerid')||('murmur-'+crypto.randomUUID().replaceAll('-','').slice(0,18));
+  localStorage.setItem('murmur_peerid',state.id);
+  try{state.contacts=JSON.parse(localStorage.getItem('murmur_contacts')||'{}')}catch{}
+  try{Object.assign(state,JSON.parse(localStorage.getItem('murmur_settings')||'{}'))}catch{}
+  $('myName').textContent=state.name;
+  $('myAvatar').textContent=(state.name||'M').slice(0,1).toUpperCase();
+  applyTheme();renderContacts();
+  if(!window.Peer){$('chatStatus').textContent='PeerJS failed to load';toast('PeerJS unavailable');return}
+  state.peer=new Peer(state.id,{debug:0});
+  state.peer.on('open',id=>{
+    if(id&&id!==state.id){state.id=id;localStorage.setItem('murmur_peerid',id)}
+    if(!state.active)$('chatStatus').textContent='Peer network ready';
+  });
+  state.peer.on('connection',c=>{
+    bindConnection(c);
+    if(!state.contacts[c.peer])addContact(c.peer);
+    toast('Incoming connection: '+displayName(c.peer));
+  });
+  state.peer.on('error',e=>{
+    console.warn(e);
+    if(e.type==='unavailable-id')toast('ID already in use. Refresh to generate a new one.');
+    else toast('Peer network: '+e.type);
+  });
+  if(location.hash.startsWith('#invite='))setTimeout(newChat,500);
+}
+
+/* ---------- wiring ---------- */
+$('profileBtn').onclick=profile;
+$('newChat').onclick=newChat;
+$('settingsBtn').onclick=settings;
+$('safetyBtn').onclick=safety;
+$('sendBtn').onclick=sendText;
+$('attachBtn').onclick=()=>$('fileInput').click();
+$('fileInput').onchange=()=>{const f=$('fileInput').files[0];if(f)sendFile(f);$('fileInput').value=''};
+$('messageInput').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendText()}};
+$('messageInput').oninput=e=>{e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,140)+'px'};
+$('searchContacts').oninput=renderContacts;
+$('backBtn').onclick=()=>{$('app').classList.remove('chatmode');state.active=null};
+$('modalback').onclick=e=>{if(e.target===$('modalback'))closeModal()};
+init().catch(e=>{console.error(e);toast('Init failed: '+e.message)});
 })();
