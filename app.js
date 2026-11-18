@@ -1,10 +1,10 @@
 /* =====================================================================
-   Chat Aman P2P — app.js (final lengkap)
+   Chat Aman P2P — app.js v3
+   Safety number dihitung dari passphrase+username (tanpa exportKey)
    ===================================================================== */
 (function () {
   "use strict";
 
-  /* ---------- State ---------- */
   var state = {
     me: null,
     peerId: null,
@@ -22,7 +22,6 @@
   var enc = new TextEncoder();
   var dec = new TextDecoder();
 
-  /* ---------- Utility ---------- */
   function $(s) { return document.querySelector(s); }
   function b64(buf) {
     var b = new Uint8Array(buf), s = "";
@@ -49,6 +48,7 @@
   }
 
   /* ---------- Kripto ---------- */
+  // Kunci AES: extractable false (aman, tidak bisa diekspor)
   async function deriveConvKey(convPass, userA, userB) {
     if (typeof convPass !== "string" || !convPass) throw new Error("passphrase kosong");
     var pair = [String(userA).toLowerCase(), String(userB).toLowerCase()].sort().join("|");
@@ -58,13 +58,17 @@
     var base = await crypto.subtle.importKey("raw", enc.encode(convPass), { name: "PBKDF2" }, false, ["deriveKey"]);
     return crypto.subtle.deriveKey(
       { name: "PBKDF2", salt: salt, iterations: 250000, hash: "SHA-256" },
-      base, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]
+      base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
     );
   }
 
-  async function safetyNumber(key) {
-    var raw = await crypto.subtle.exportKey("raw", key);
-    var h = await crypto.subtle.digest("SHA-256", raw);
+  // Safety number: hash dari passphrase + username (TANPA exportKey)
+  // Deterministik: kedua sisi menghasilkan nomor yang sama karena passphrase sama.
+  async function safetyNumber(convPass, userA, userB) {
+    if (typeof convPass !== "string" || !convPass) throw new Error("passphrase kosong untuk safety number");
+    var pair = [String(userA).toLowerCase(), String(userB).toLowerCase()].sort().join("|");
+    var input = enc.encode("chataman-sn-v1:" + pair + ":" + convPass);
+    var h = await crypto.subtle.digest("SHA-256", input);
     var hx = Array.from(new Uint8Array(h)).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
     return hx.slice(0, 32).toUpperCase().match(/.{1,4}/g).join(" ");
   }
@@ -74,20 +78,17 @@
     var ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, enc.encode(plain));
     return { iv: b64(iv), ct: b64(ct) };
   }
-
   async function decryptText(key, payload) {
     try {
       var pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(payload.iv) }, key, unb64(payload.ct));
       return dec.decode(pt);
     } catch (e) { return "[pesan tidak bisa didekripsi]"; }
   }
-
   async function encryptBytes(key, bytes) {
     var iv = crypto.getRandomValues(new Uint8Array(12));
     var ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, bytes);
     return { iv: b64(iv), ct: b64(ct) };
   }
-
   async function decryptBytes(key, payload) {
     var pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(payload.iv) }, key, unb64(payload.ct));
     return new Uint8Array(pt);
@@ -147,7 +148,7 @@
     } catch (e) {}
   }
 
-  /* ---------- localStorage helpers ---------- */
+  /* ---------- localStorage ---------- */
   function saveVerified() {
     try { localStorage.setItem("chataman.verifiedsn", JSON.stringify(state.verifiedSN)); } catch (e) {}
   }
@@ -170,19 +171,19 @@
       return all[peer] || "";
     } catch (e) { return ""; }
   }
-  function restoreConvPass() {
+  async function restoreConvPass() {
     try {
       var all = JSON.parse(localStorage.getItem("chataman.convpass") || "{}");
-      Object.keys(all).forEach(function (peer) {
+      for (var peer in all) {
+        if (!all.hasOwnProperty(peer)) continue;
         state.convPass[peer] = all[peer];
-        deriveConvKey(all[peer], state.me, peer).then(function (k) {
+        try {
+          var k = await deriveConvKey(all[peer], state.me, peer);
           state.convKeys[peer] = k;
-          safetyNumber(k).then(function (sn) {
-            state.currentSN[peer] = sn;
-            renderPeers();
-          });
-        });
-      });
+          state.currentSN[peer] = await safetyNumber(all[peer], state.me, peer);
+        } catch (e) {}
+      }
+      renderPeers();
     } catch (e) {}
   }
 
@@ -235,7 +236,7 @@
     });
   }
 
-  /* ---------- Start app ---------- */
+  /* ---------- Start ---------- */
   function startApp(username, peerId) {
     state.me = username.toLowerCase().replace(/[^a-z0-9]/g, "") || "user";
     $("#login").hidden = true;
@@ -254,8 +255,8 @@
 
     state.peerId = createPeer(peerId);
     state.peerId.on("open", function () {
-      restoreConvPass();
       loadVerified();
+      restoreConvPass();
     });
     state.peerId.on("connection", function (conn) { handleConnection(conn); });
     state.peerId.on("error", function (err) {
@@ -315,14 +316,15 @@
 
   /* ---------- Incoming ---------- */
   async function handleIncoming(peer, data) {
-    // Cek SN berubah
-    if (state.convKeys[peer] && state.verifiedSN[peer]) {
-      var snNow = await safetyNumber(state.convKeys[peer]);
-      state.currentSN[peer] = snNow;
-      if (state.verifiedSN[peer] !== snNow) {
-        showToast(peer, "🚨 SAFETY NUMBER BERUBAH — kemungkinan MITM!");
-        beep();
-      }
+    if (state.convPass[peer] && state.verifiedSN[peer]) {
+      try {
+        var snNow = await safetyNumber(state.convPass[peer], state.me, peer);
+        state.currentSN[peer] = snNow;
+        if (state.verifiedSN[peer] !== snNow) {
+          showToast(peer, "🚨 SAFETY NUMBER BERUBAH — kemungkinan MITM!");
+          beep();
+        }
+      } catch (e) {}
     }
 
     if (data.type === "text") {
@@ -370,7 +372,7 @@
     var at = Date.now();
     conn.send({ type: "text", payload: payload, at: at, ttl: ttl });
     addMessageBubble({ from: state.me, to: peer, at: at, type: "text", plain: text }, true, peer);
-    var id = await saveMessage({ from: state.me, to: peer, at: at, type: "text", plain: text, ttl: ttl });
+    await saveMessage({ from: state.me, to: peer, at: at, type: "text", plain: text, ttl: ttl });
     bumpSnippet(peer, text);
     renderPeers();
     if (ttl > 0) scheduleDelete(peer, at, ttl);
@@ -404,7 +406,6 @@
       msgs.forEach(function (m) {
         if (m.at === at && m.id) deleteMessage(m.id);
       });
-      // Refresh tampilan jika percakapan ini aktif
       if (state.activePeer === peer) {
         var list = $("#list");
         if (list) {
@@ -584,13 +585,14 @@
     } catch (e) {}
   }
 
-  /* ---------- Safety number panel ---------- */
+  /* ---------- Safety panel ---------- */
   async function showSafetyPanel() {
     var peer = state.activePeer;
     if (!peer) { alert("Pilih percakapan dulu."); return; }
-    if (!state.convKeys[peer]) { alert("Atur passphrase dulu (klik 🔑)."); return; }
+    var pass = state.convPass[peer] || loadConvPass(peer);
+    if (!pass) { alert("Atur passphrase dulu (klik 🔑)."); return; }
 
-    var sn = await safetyNumber(state.convKeys[peer]);
+    var sn = await safetyNumber(pass, state.me, peer);
     state.currentSN[peer] = sn;
     var verified = state.verifiedSN[peer];
     var isVerified = verified === sn;
@@ -694,7 +696,7 @@
         state.convKeys[peer] = key;
         state.convPass[peer] = pass;
         saveConvPass(peer, pass);
-        var sn = await safetyNumber(key);
+        var sn = await safetyNumber(pass, state.me, peer);
         state.currentSN[peer] = sn;
 
         var prevVerified = state.verifiedSN[peer];
@@ -702,7 +704,6 @@
         if (prevVerified && prevVerified !== sn) {
           warning = "\n\n⚠️ PERINGATAN: Safety Number BERUBAH dari yang pernah Anda verifikasi!\nIni bisa berarti ada penyusup (MITM). JANGAN lanjut chat sampai Anda verifikasi ulang lewat telepon.";
         }
-
         alert("Passphrase tersimpan.\n\nSafety Number:\n" + sn + "\n\nBandingkan nomor ini dengan " + peer + " lewat telepon/tatap muka.\nKalau SAMA di kedua sisi, tidak ada penyusup." + warning);
         selectPeer(peer);
         renderPeers();
