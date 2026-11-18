@@ -55,10 +55,10 @@
     var saltInput = enc.encode("chataman-p2p-v1:" + pair);
     var saltHash = await crypto.subtle.digest("SHA-256", saltInput);
     var salt = new Uint8Array(saltHash).slice(0, 16);
-    var base = await crypto.subtle.importKey("raw", enc.encode(convPass), { name: "PBKDF2" }, true, ["deriveKey"]);
+    var base = await crypto.subtle.importKey("raw", enc.encode(convPass), { name: "PBKDF2" }, false, ["deriveKey"]);
     return crypto.subtle.deriveKey(
       { name: "PBKDF2", salt: salt, iterations: 250000, hash: "SHA-256" },
-      base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+      base, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]
     );
   }
 
