@@ -1,43 +1,329 @@
 <!doctype html>
 <html lang="id">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#32836e"><title>Murmur — Private conversations</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#287b63">
+<title>Murmur — Private conversations</title>
 <style>
-:root{--accent:#32836e;--accent2:#246b58;--bg:#f4f6f5;--panel:#fff;--text:#17211e;--muted:#75827d;--line:#e4eae7;--mine:#d9f2e7;--other:#fff;--radius:20px}
-*{box-sizing:border-box}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);height:100dvh}body.dark{--bg:#151b1a;--panel:#202725;--text:#e8efec;--muted:#9aaba5;--line:#323d39;--mine:#234b3d;--other:#29312f}button,input,select{font:inherit}button{cursor:pointer;border:0}button:disabled{opacity:.5;cursor:not-allowed}.app{height:100%;max-width:1180px;margin:auto;padding:14px;display:grid;grid-template-columns:340px 1fr;gap:12px}.sidebar,.chat{background:var(--panel);border:1px solid var(--line);border-radius:24px;overflow:hidden;min-height:0}.sidebar{display:flex;flex-direction:column}.brand{display:flex;align-items:center;gap:12px;padding:22px 20px 15px}.logo{width:44px;height:44px;border-radius:16px;background:var(--accent);display:grid;place-items:center;color:white;font-size:22px;font-weight:700}.brand h1{margin:0;font-size:22px;letter-spacing:-.5px}.brand small{display:block;color:var(--muted);margin-top:2px}.identity{margin:0 14px 12px;background:var(--bg);border:1px solid var(--line);padding:12px;border-radius:16px}.identity strong{display:block;overflow-wrap:anywhere}.identity small{color:var(--muted)}.idrow{display:flex;gap:8px;margin-top:8px}.idrow button{flex:0 0 auto}.search{padding:0 14px 12px}.search input,.field input,.field select{width:100%;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:12px;padding:11px;outline:none}.search input:focus,.field input:focus{border-color:var(--accent)}.sectionlabel{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:5px 18px}.contactlist{overflow:auto;flex:1;padding:0 8px}.contact{width:100%;display:flex;align-items:center;gap:10px;text-align:left;background:transparent;color:var(--text);padding:11px;border-radius:14px}.contact:hover,.contact.active{background:var(--bg)}.avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent);font-weight:700;flex-shrink:0}.contact .info{min-width:0;flex:1}.contact .info strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.contact .info small{color:var(--muted)}.dot{width:8px;height:8px;background:#43aa78;border-radius:50%}.sidebottom{padding:12px;border-top:1px solid var(--line);display:flex;gap:8px}.sidebottom button{flex:1}.btn{background:var(--bg);color:var(--text);border:1px solid var(--line);padding:10px 12px;border-radius:12px}.primary{background:var(--accent);color:white;border-color:var(--accent)}.chat{display:flex;flex-direction:column;position:relative}.chathead{display:flex;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid var(--line)}.chathead .title{flex:1;min-width:0}.chathead strong{display:block}.chathead small{color:var(--muted)}.messages{flex:1;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:8px;background:var(--bg)}.bubble{max-width:min(78%,560px);padding:10px 13px;border-radius:var(--radius);background:var(--other);border:1px solid var(--line);overflow-wrap:anywhere;white-space:pre-wrap}.bubble.mine{align-self:flex-end;background:var(--mine);border-color:transparent}.bubble .time{font-size:10px;color:var(--muted);display:block;text-align:right;margin-top:5px}.empty{margin:auto;text-align:center;max-width:360px;color:var(--muted);padding:24px}.empty .big{font-size:46px;margin-bottom:12px}.composer{border-top:1px solid var(--line);padding:12px;display:flex;gap:8px;align-items:end}.composer textarea{flex:1;resize:none;min-height:42px;max-height:140px;padding:11px;border-radius:14px;border:1px solid var(--line);background:var(--bg);color:var(--text);outline:none}.composer button{height:42px}.notice{padding:10px 15px;color:var(--muted);font-size:12px;text-align:center;border-bottom:1px solid var(--line)}.modalback{position:fixed;inset:0;background:#0008;display:none;align-items:center;justify-content:center;padding:16px;z-index:10}.modal{background:var(--panel);color:var(--text);width:min(440px,100%);max-height:90dvh;overflow:auto;border:1px solid var(--line);border-radius:22px;padding:20px}.modal h2{margin:0 0 16px}.field{margin:12px 0}.field label{display:block;color:var(--muted);font-size:13px;margin-bottom:6px}.modalactions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}.colors{display:flex;gap:10px;flex-wrap:wrap}.swatch{width:32px;height:32px;border-radius:50%;border:2px solid transparent}.swatch.selected{outline:2px solid var(--text);outline-offset:2px}.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#17221e;color:white;padding:12px 16px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;z-index:20}.toast.show{opacity:1}.statuspill{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}.back{display:none}
-@media(max-width:760px){.app{display:block;padding:0;height:100dvh}.sidebar,.chat{border-radius:0;border:0;height:100%}.chat{display:none}.app.chatmode .sidebar{display:none}.app.chatmode .chat{display:flex}.back{display:inline-block}.brand{padding-top:18px}.messages{padding:12px}}
+/* ---------- tokens ---------- */
+:root{
+  --accent:#287b63;--accent2:#1e6551;
+  --bg:#f3f6f5;--panel:#fff;--text:#19231f;--muted:#7b8984;--line:#e5ece8;
+  --mine:#d9f3e8;--other:#fff;--radius:20px;
+  --shadow:0 10px 35px rgba(20,50,40,.06);
+}
+body.dark{
+  --bg:#101715;--panel:#1a2220;--text:#edf4f0;--muted:#9aaba4;--line:#303a36;
+  --mine:#254b3c;--other:#252e2b;--shadow:0 10px 35px rgba(0,0,0,.15);
+}
 
-/* Murmur refresh: responsive desktop/mobile */
-:root{--bg:#f1f5f2;--panel:#fff;--text:#17231e;--muted:#728078;--line:#dfe8e2;--mine:#d8f1e5;--other:#fff;--accent:#34856c;--accent2:#226c54;--radius:22px}
-body{background:radial-gradient(ellipse at 18% 0%,#dcece3 0,transparent 36%),var(--bg);letter-spacing:-.01em}
-body.dark{--bg:#111917;--panel:#1a2421;--text:#edf5f0;--muted:#9aaea4;--line:#2b3933;--mine:#244e3c;--other:#202a26;background:radial-gradient(ellipse at 15% 0%,#223d32 0,transparent 40%),var(--bg)}
-.app{max-width:1500px;grid-template-columns:340px minmax(0,1fr);gap:18px;padding:20px}
-.sidebar,.chat{border-radius:26px;box-shadow:0 12px 38px #18291f0a}
-.sidebar{padding:5px 0}.brand{padding:25px 22px 19px}.logo{border-radius:15px;box-shadow:0 8px 20px color-mix(in srgb,var(--accent) 25%,transparent)}
-.identity-new{padding:15px;margin:0 15px 17px;border-radius:19px}.identitytop{display:flex;align-items:center;gap:12px}.avatar-large{width:52px;height:52px;font-size:19px}.identitytext strong{font-size:15px}.identitytext small{display:block;margin-top:4px}.profilebtn{width:100%;margin-top:13px;text-align:center;font-size:13px;padding:9px 12px;border-radius:12px}.profilebtn span{float:right;color:var(--accent)}
-.search input{padding:12px 14px;border-radius:14px;background:var(--bg)}.sectionlabel{font-weight:700;letter-spacing:1.2px;padding:9px 18px}.contactlist{padding:0 10px}.contact{padding:13px;border-radius:16px;transition:background .15s,transform .15s}.contact:hover{transform:translateX(2px)}.contact.active{background:color-mix(in srgb,var(--accent) 10%,var(--bg));box-shadow:inset 3px 0 var(--accent)}.avatar{border-radius:15px}.contact .info small{font-size:11px}.sidebottom{padding:15px;gap:10px}.sidebottom .btn{border-radius:14px;padding:12px 14px}.primary{box-shadow:0 5px 16px color-mix(in srgb,var(--accent) 18%,transparent)}
-.chat{background:var(--panel)}.chathead{padding:18px 22px}.chathead .avatar{border-radius:16px}.notice{padding:12px 20px;text-align:left;background:color-mix(in srgb,var(--accent) 5%,var(--panel));font-size:11px}.messages{padding:26px clamp(18px,4vw,54px);gap:12px;background:linear-gradient(180deg,color-mix(in srgb,var(--bg) 96%,var(--panel)),var(--bg))}.bubble{padding:12px 15px;box-shadow:0 2px 8px #00000005}.composer{padding:15px 18px;background:var(--panel)}.composer textarea{border-radius:16px;padding:12px 14px}.composer button{border-radius:14px;min-width:44px}.modalback{backdrop-filter:blur(7px);background:#06110c80}.modal{border-radius:25px;box-shadow:0 25px 80px #0003;padding:24px}.modal h2{letter-spacing:-.03em}.field select,.field input{border-radius:13px;padding:12px}.btn{border-radius:13px;transition:transform .15s,filter .15s}.btn:hover{filter:brightness(1.03);transform:translateY(-1px)}
-.profilecard{text-align:center}.profilecard .avatar{margin:0 auto}.qrwrap{background:white;border-radius:18px;padding:16px;width:max-content;margin:15px auto}.sharelink{word-break:break-all;background:var(--bg);padding:12px;border-radius:12px;font-size:12px;color:var(--muted)}.dangerbtn{background:#b83e4a!important;color:#fff!important;border-color:#b83e4a!important}.dangertext{color:#c34350!important}.lockscreen{display:none;position:fixed;inset:0;z-index:50;background:var(--bg);align-items:center;justify-content:center;padding:24px}.lockscreen.show{display:flex}.lockcard{width:min(390px,100%);text-align:center;background:var(--panel);padding:32px;border-radius:28px;border:1px solid var(--line);box-shadow:0 22px 65px #0002}.locklogo{margin:0 auto 14px}.lockcard h1{font-size:24px;margin:8px 0}.lockcard p{color:var(--muted);font-size:14px;line-height:1.5}.lockcard input{width:100%;margin:10px 0 12px;padding:13px;border:1px solid var(--line);border-radius:14px;background:var(--bg);color:var(--text)}.lockcard button{width:100%;padding:12px}
-@media(min-width:1200px){.app{grid-template-columns:355px minmax(0,1fr);padding:22px;gap:20px}.messages{padding-left:clamp(30px,6vw,90px);padding-right:clamp(30px,6vw,90px)}}
-@media(max-width:760px){body{background:var(--bg)}.app{padding:0;gap:0}.sidebar,.chat{border-radius:0;box-shadow:none}.brand{padding:20px 20px 16px}.identity-new{margin:0 14px 14px}.contact{padding:12px 13px}.sidebottom{padding:12px}.chathead{padding:12px 14px}.messages{padding:14px}.notice{font-size:10px;padding:9px 12px}.composer{padding:10px}.modalback{align-items:flex-end;padding:0}.modal{width:100%;max-height:92dvh;border-radius:25px 25px 0 0;padding:23px 20px calc(22px + env(safe-area-inset-bottom))}.modalactions .btn{min-height:44px}.lockcard{padding:26px}}
-@media(min-width:761px) and (max-height:700px){.app{padding:12px}.brand{padding:15px 18px}.identity-new{padding:11px}.chathead{padding:12px 16px}.messages{padding:15px}}
+/* ---------- base ---------- */
+*{box-sizing:border-box}
+body{
+  margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  background:var(--bg);color:var(--text);height:100dvh;
+}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer;border:0}
+button:disabled{opacity:.45;cursor:not-allowed}
 
+/* ---------- layout ---------- */
+.app{
+  height:100%;max-width:1440px;margin:auto;padding:18px;
+  display:grid;grid-template-columns:350px 1fr;gap:16px;
+}
+.sidebar,.chat{
+  background:var(--panel);border:1px solid var(--line);border-radius:26px;
+  overflow:hidden;min-height:0;box-shadow:var(--shadow);
+}
+.sidebar{display:flex;flex-direction:column}
+
+/* ---------- brand ---------- */
+.brand{display:flex;align-items:center;gap:12px;padding:24px 22px 17px}
+.logo{
+  width:46px;height:46px;border-radius:17px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:grid;place-items:center;color:white;font-size:23px;font-weight:800;
+  box-shadow:0 6px 18px color-mix(in srgb,var(--accent) 25%,transparent);
+}
+.brand h1{margin:0;font-size:23px;letter-spacing:-.7px}
+.brand small{display:block;color:var(--muted);margin-top:3px;font-size:12px}
+
+/* ---------- identity card ---------- */
+.identity{
+  margin:0 14px 15px;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 9%,var(--panel)),var(--panel));
+  border:1px solid var(--line);padding:14px;border-radius:19px;
+  display:flex;align-items:center;gap:12px;
+}
+.identity .avatar{width:46px;height:46px;font-size:16px}
+.identity .idinfo{min-width:0;flex:1}
+.identity strong{display:block;overflow-wrap:anywhere;font-size:14px}
+.identity small{color:var(--muted);font-size:12px}
+.profileactions{display:flex;gap:6px}
+
+.iconbtn{
+  width:36px;height:36px;border-radius:12px;background:var(--panel);
+  border:1px solid var(--line);color:var(--text);display:grid;place-items:center;font-size:15px;
+}
+
+/* ---------- search ---------- */
+.search{padding:0 14px 14px}
+.search input,.field input,.field select{
+  width:100%;border:1px solid var(--line);background:var(--bg);color:var(--text);
+  border-radius:14px;padding:12px;outline:none;
+}
+.search input:focus,.field input:focus,.field select:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 13%,transparent);
+}
+
+/* ---------- contact list ---------- */
+.sectionlabel{
+  font-size:10px;text-transform:uppercase;letter-spacing:1.25px;font-weight:750;
+  color:var(--muted);padding:6px 18px 10px;
+}
+.contactlist{overflow:auto;flex:1;padding:0 8px 8px}
+.contact{
+  width:100%;display:flex;align-items:center;gap:11px;text-align:left;
+  background:transparent;color:var(--text);padding:12px;border-radius:16px;transition:.15s;
+}
+.contact:hover,.contact.active{background:var(--bg)}
+.contact:active{transform:scale(.99)}
+
+.avatar{
+  width:44px;height:44px;border-radius:50%;
+  display:grid;place-items:center;
+  background:color-mix(in srgb,var(--accent) 17%,transparent);
+  color:var(--accent);font-weight:750;flex-shrink:0;
+}
+.contact .info{min-width:0;flex:1}
+.contact .info strong{
+  display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px;
+}
+.contact .info small{
+  color:var(--muted);display:block;margin-top:3px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* ---------- verification badges ---------- */
+.badge{
+  font-size:10px;font-weight:800;min-width:18px;height:18px;border-radius:6px;
+  display:inline-grid;place-items:center;padding:0 4px;flex-shrink:0;
+}
+.badge.verified{background:#d9f3e8;color:#287b63}
+.badge.unverified{background:#ffe9c7;color:#a86b00}
+body.dark .badge.verified{background:#254b3c;color:#9be0bf}
+body.dark .badge.unverified{background:#4a3a1a;color:#f1c87c}
+
+/* ---------- sidebar bottom ---------- */
+.sidebottom{padding:13px;border-top:1px solid var(--line);display:flex;gap:8px}
+.sidebottom button{flex:1}
+
+.btn{
+  background:var(--bg);color:var(--text);border:1px solid var(--line);
+  padding:10px 13px;border-radius:13px;font-weight:650;transition:.15s;
+}
+.btn:hover,.iconbtn:hover{filter:brightness(.97);transform:translateY(-1px)}
+.primary{background:var(--accent);color:white;border-color:var(--accent)}
+
+/* ---------- chat panel ---------- */
+.chat{display:flex;flex-direction:column;position:relative}
+.chathead{
+  display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line);
+}
+.chathead .title{flex:1;min-width:0}
+.chathead strong{display:block;font-size:15px}
+.chathead small{color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:3px}
+
+/* ---------- messages ---------- */
+.messages{
+  flex:1;overflow:auto;padding:22px;
+  display:flex;flex-direction:column;gap:9px;background:var(--bg);
+}
+.bubble{
+  max-width:min(78%,580px);padding:12px 15px;border-radius:var(--radius);
+  background:var(--other);border:1px solid var(--line);
+  overflow-wrap:anywhere;white-space:pre-wrap;
+  box-shadow:0 2px 8px rgba(0,0,0,.025);
+}
+.bubble.mine{align-self:flex-end;background:var(--mine);border-color:transparent}
+.bubble .time{
+  font-size:10px;color:var(--muted);display:block;text-align:right;margin-top:6px;
+}
+.empty{
+  margin:auto;text-align:center;max-width:360px;color:var(--muted);padding:25px;
+}
+.empty .big{font-size:54px;margin-bottom:14px;color:var(--accent)}
+.empty strong{color:var(--text);font-size:16px}
+.empty p{line-height:1.6;font-size:13px}
+
+/* ---------- composer ---------- */
+.composer{
+  border-top:1px solid var(--line);padding:13px;
+  display:flex;gap:9px;align-items:end;background:var(--panel);
+}
+.composer textarea{
+  flex:1;resize:none;min-height:44px;max-height:140px;padding:12px 14px;
+  border-radius:15px;border:1px solid var(--line);
+  background:var(--bg);color:var(--text);outline:none;
+}
+.composer textarea:focus{border-color:var(--accent)}
+.composer textarea:disabled{opacity:.6;cursor:not-allowed}
+.composer button{height:44px;min-width:44px}
+
+/* ---------- notice ---------- */
+.notice{
+  padding:10px 15px;color:var(--muted);font-size:11px;line-height:1.4;
+  text-align:center;border-bottom:1px solid var(--line);background:var(--panel);
+}
+
+/* ---------- modal ---------- */
+.modalback{
+  position:fixed;inset:0;background:#0008;display:none;
+  align-items:center;justify-content:center;padding:16px;z-index:10;
+  backdrop-filter:blur(5px);
+}
+.modal{
+  background:var(--panel);color:var(--text);width:min(460px,100%);
+  max-height:90dvh;overflow:auto;border:1px solid var(--line);
+  border-radius:25px;padding:23px;box-shadow:0 20px 80px #0003;
+}
+.modal h2{margin:0 0 7px;font-size:20px;letter-spacing:-.4px}
+.field{margin:14px 0}
+.field label{display:block;color:var(--muted);font-size:13px;margin-bottom:7px}
+.modalactions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+
+/* ---------- color swatches ---------- */
+.colors{display:flex;gap:10px;flex-wrap:wrap}
+.swatch{width:34px;height:34px;border-radius:50%;border:2px solid transparent}
+.swatch.selected{outline:2px solid var(--text);outline-offset:2px}
+
+/* ---------- toast ---------- */
+.toast{
+  position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
+  background:#17221e;color:white;padding:12px 16px;border-radius:13px;
+  opacity:0;pointer-events:none;transition:.2s;z-index:20;
+  box-shadow:0 8px 24px #0003;max-width:90vw;text-align:center;
+}
+.toast.show{opacity:1}
+
+/* ---------- misc ---------- */
+.back{display:none}
+.qrwrap{
+  background:#fff;padding:14px;border-radius:18px;
+  display:grid;place-items:center;margin:16px auto;min-height:230px;width:230px;
+}
+.profilecard{text-align:center}
+.profilecard .avatar{margin:0 auto 10px;width:64px;height:64px;font-size:20px}
+.profilecard p{color:var(--muted);font-size:13px;line-height:1.55}
+.sharelink{
+  font-size:12px;word-break:break-all;color:var(--muted);
+  background:var(--bg);border:1px solid var(--line);
+  padding:10px;border-radius:11px;
+}
+
+/* ---------- mobile ---------- */
+@media (max-width:760px){
+  .app{display:block;padding:0;height:100dvh}
+  .sidebar,.chat{border-radius:0;border:0;height:100%}
+  .chat{display:none}
+  .app.chatmode .sidebar{display:none}
+  .app.chatmode .chat{display:flex}
+  .back{display:inline-block;font-size:22px;font-weight:700;line-height:1;padding:6px 12px}
+  .brand{padding-top:18px}
+  .messages{padding:13px}
+  .identity{margin-bottom:12px}
+  .chathead{padding:12px 14px}
+  .composer{padding:10px}
+}
 </style>
-</head><body>
+</head>
+<body>
+
 <div class="app" id="app">
-<aside class="sidebar">
- <div class="brand"><div class="logo">m</div><div><h1>Murmur</h1><small>Private conversations. Quietly.</small></div></div>
- <div class="identity identity-new"><div class="identitytop"><div class="avatar avatar-large" id="myAvatar">M</div><div class="identitytext"><strong id="myName">Guest</strong><small>Private account · P2P</small></div></div><button class="btn profilebtn" id="profileBtn">My profile & QR <span>↗</span></button><input id="myId" aria-hidden="true" tabindex="-1" readonly style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px"></div>
- <div class="search"><input id="searchContacts" placeholder="Search conversations"></div><div class="sectionlabel">Conversations</div><div class="contactlist" id="contacts"><div class="empty">No conversations yet.<br>Start by connecting to a contact.</div></div>
- <div class="sidebottom"><button class="btn primary" id="newChat">＋ New chat</button><button class="btn" id="settingsBtn" aria-label="Settings">⚙</button></div>
-</aside>
-<main class="chat">
- <header class="chathead"><button class="btn back" id="backBtn">‹</button><div class="avatar" id="chatAvatar">M</div><div class="title"><strong id="chatTitle">Welcome to Murmur</strong><small id="chatStatus">Peer-to-peer private chat</small></div><button class="btn" id="safetyBtn" title="Safety number">⌁</button></header>
- <div class="notice">Murmur uses encrypted messages over a peer-to-peer connection. Verify contacts independently before sharing sensitive information.</div>
- <div class="messages" id="messages"><div class="empty"><div class="big">◌</div><strong>Quietly private.</strong><p>Choose a conversation or create a new chat to get started.</p></div></div>
- <div class="composer"><button class="btn" id="attachBtn" title="Send file">＋</button><input id="fileInput" type="file" hidden><textarea id="messageInput" rows="1" placeholder="Write a message…" disabled></textarea><button class="btn primary" id="sendBtn" disabled>Send</button></div>
-</main></div>
-<div class="lockscreen" id="lockscreen"><div class="lockcard"><div class="logo locklogo">m</div><h1>Murmur is locked</h1><p>Your conversations are hidden. Enter your chat passphrase to unlock.</p><input id="unlockPass" type="password" placeholder="Passphrase" autocomplete="current-password"><button class="btn primary" id="unlockBtn">Unlock</button></div></div><div class="modalback" id="modalback"><div class="modal" id="modal"></div></div><div class="toast" id="toast"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script><script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="./app.js"></script></body></html>
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">m</div>
+      <div>
+        <h1>Murmur</h1>
+        <small>Private conversations. Quietly.</small>
+      </div>
+    </div>
+
+    <div class="identity">
+      <div class="avatar" id="myAvatar">M</div>
+      <div class="idinfo">
+        <strong id="myName">Guest</strong>
+        <small>Your private profile</small>
+      </div>
+      <div class="profileactions">
+        <button class="iconbtn" id="profileBtn" title="My profile">▣</button>
+      </div>
+    </div>
+
+    <div class="search">
+      <input id="searchContacts" placeholder="Search chats…" autocomplete="off">
+    </div>
+
+    <div class="sectionlabel">Your conversations</div>
+    <div class="contactlist" id="contacts">
+      <div class="empty">No conversations yet.<br>Start by connecting to a contact.</div>
+    </div>
+
+    <div class="sidebottom">
+      <button class="btn primary" id="newChat">＋ Add friend</button>
+      <button class="btn" id="settingsBtn" title="Settings">⚙</button>
+    </div>
+  </aside>
+
+  <!-- ============ CHAT ============ -->
+  <main class="chat">
+    <header class="chathead">
+      <button class="btn back" id="backBtn" aria-label="Back">‹</button>
+      <div class="avatar" id="chatAvatar">M</div>
+      <div class="title">
+        <strong id="chatTitle">Welcome to Murmur</strong>
+        <small id="chatStatus">Peer-to-peer private chat</small>
+      </div>
+      <button class="iconbtn" id="safetyBtn" title="Verify safety number">⌁</button>
+    </header>
+
+    <div class="notice">
+      End-to-end encrypted with per-message keys · Verify the safety number with each contact
+    </div>
+
+    <div class="messages" id="messages">
+      <div class="empty">
+        <div class="big">◌</div>
+        <strong>Quietly private.</strong>
+        <p>Select a conversation or add a friend to start messaging.</p>
+      </div>
+    </div>
+
+    <div class="composer">
+      <button class="btn" id="attachBtn" title="Send file">＋</button>
+      <input id="fileInput" type="file" hidden>
+      <textarea id="messageInput" rows="1" placeholder="Write a message…" disabled></textarea>
+      <button class="btn primary" id="sendBtn" disabled>➤</button>
+    </div>
+  </main>
+
+</div>
+
+<!-- ============ MODAL & TOAST ============ -->
+<div class="modalback" id="modalback">
+  <div class="modal" id="modal"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<!-- ============ SCRIPTS ============ -->
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
