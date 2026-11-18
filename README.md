@@ -1,16 +1,25 @@
 # Murmur
-A static PeerJS chat prototype intended for GitHub Pages.
+
+Murmur is a peer-to-peer private chat prototype. It uses PeerJS for peer connections and AES-GCM encryption with a shared passphrase.
 
 
-## Publish with GitHub Pages
-1. Create a GitHub repository (for example `murmur`).
-2. Upload `index.html` to the repository root.
-3. Open **Settings → Pages**.
-4. Under Build and deployment, choose **Deploy from a branch**, branch `main`, folder `/ (root)`, then Save.
-5. Open the Pages URL after the deployment completes.
+## Run
+
+Open `index.html` from a secure context (HTTPS; GitHub Pages is recommended). Create a profile name and a shared chat passphrase (minimum 8 characters). Both contacts need the same passphrase for this prototype.
 
 
-## Important security notes
-This is an experimental peer-to-peer chat prototype, not a production secure messenger. It uses AES-GCM with a shared passphrase-derived key, but does not implement the Signal Protocol, forward secrecy, ratcheting, audited key management, or authenticated identity. The peer fingerprint is a manual comparison aid only. Use only for testing; do not send highly sensitive information.
+## Features
+- Responsive, modern chat UI with light/dark/system theme options
+- Accent color and message bubble shape customization
+- P2P messaging and file sharing (8 MB maximum)
+- Local message storage in IndexedDB
+- QR contact card and shareable invite link
+- Add friend using invite link or Peer ID
+- Contact safety code display
+- Optional disappearing messages
 
-Both participants must use the exact same chat passphrase. Peer IDs are stored locally in browser storage; clearing site data may lose your identity and history. File transfer is limited to 8 MB and files are stored locally in IndexedDB.
+## Limitations / security note
+This is a prototype, not a Signal-equivalent secure messenger. The shared passphrase design does not provide forward secrecy, audited identity authentication, or an audited Signal Protocol implementation. The contact safety code is not proof of identity. Do not rely on this prototype for high-risk or sensitive communications.
+
+Peer IDs are included in shared invitation links/QR codes; the UI hides them from the primary profile display. Avoid posting invite links publicly.
+
